@@ -1,0 +1,65 @@
+def get_news_sentiment(ticker, start_date, end_date):
+
+    start_date = start_date.strftime('%Y%m%d')
+    end_date = end_date.strftime('%Y%m%d')
+    print(start_date, end_date)
+
+    url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&limit=1000&tickers={ticker}&time_from={start_date}T0030&time_to={end_date}T2330&apikey={API_KEY}"
+    print(url)
+
+    # Make a GET request to the API
+    response = requests.get(url)
+    #text = response.text
+    print(response)
+
+    # Initialize an empty list to store scores
+    scores = []
+
+    # Regular expression to find JSON-like structures in the text
+    json_pattern = re.compile(r'\{\n\s+"title":.*?"ticker_sentiment": \[(.*?)\]\n\s+\}', re.DOTALL)
+
+    # Find all JSON-like structures
+    matches = json_pattern.findall(response.text)
+
+    for match in matches:
+        # Replace '\n' and multiple spaces for better JSON parsing
+        cleaned_match = re.sub(r'\s+', ' ', match)
+
+        # Convert the string to a dictionary
+        try:
+            ticker_sentiment_list = json.loads(f'[{cleaned_match}]')
+
+            # Extracting the relevant scores for ticker
+            for ticker_info in ticker_sentiment_list:
+                if ticker_info.get("ticker") == ticker:
+                    relevance_score = ticker_info.get("relevance_score")
+                    sentiment_score = ticker_info.get("ticker_sentiment_score")
+                    scores.append((relevance_score, sentiment_score))
+        except json.JSONDecodeError:
+            continue
+
+    scores = pd.DataFrame(scores, columns=['relevance_score', 'ticker_sentiment_score'])
+    scores['relevance_score'] = pd.to_numeric(scores['relevance_score'])
+    scores['ticker_sentiment_score'] = pd.to_numeric(scores['ticker_sentiment_score'])
+
+    print(scores)
+
+    # Calculate the weighted average
+    weighted_avg = (scores['relevance_score'] * scores['ticker_sentiment_score']).sum()/scores['relevance_score'].sum()
+
+    # Classify the weighted average
+    def classify_sentiment(score):
+        if score <= -0.35:
+            return "Bearish"
+        elif -0.35 < score <= -0.15:
+            return "Somewhat-Bearish"
+        elif -0.15 < score < 0.15:
+            return "Neutral"
+        elif 0.15 <= score < 0.35:
+            return "Somewhat_Bullish"
+        elif score >= 0.35:
+            return "Bullish"
+
+    sentiment_classification = classify_sentiment(weighted_avg)
+
+    return sentiment_classification
